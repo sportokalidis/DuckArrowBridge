@@ -45,6 +45,7 @@ std::shared_ptr<arrow::Table> DataProcessor::process() {
             auto logical_type = vector.GetType().id();
             auto column_name = result->names[col_idx];
 
+            std::cout  << " -- column name: " << column_name << std::endl;
             if (logical_type == duckdb::LogicalTypeId::INTEGER) {
                 arrow::Int32Builder builder;
                 for (duckdb::idx_t row_idx = 0; row_idx < chunk->size(); ++row_idx) {
@@ -60,6 +61,26 @@ std::shared_ptr<arrow::Table> DataProcessor::process() {
                 builder.Finish(&array);
                 arrays.push_back(array);
                 fields.push_back(arrow::field(column_name, arrow::int32()));
+            }
+            else if (logical_type == duckdb::LogicalTypeId::VARCHAR) {
+                arrow::StringBuilder builder;
+                for (duckdb::idx_t row_idx = 0; row_idx < chunk->size(); ++row_idx) {
+                    auto value = vector.GetValue(row_idx);
+                    if (value.IsNull()) {
+                        builder.AppendNull();
+                    } else {
+                        builder.Append(value.GetValue<std::string>());
+                    }
+                }
+
+                std::shared_ptr<arrow::Array> array;
+                builder.Finish(&array);
+                arrays.push_back(array);
+                fields.push_back(arrow::field(column_name, arrow::utf8()));
+            } 
+            else {
+                std::cerr << "Unsupported data type in column: " << column_name << std::endl;
+                return nullptr;
             }
             // Handle other data types as needed
         }
