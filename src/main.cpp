@@ -40,6 +40,15 @@ void PrintArrowTable(const std::shared_ptr<arrow::Table>& table) {
                     }
                     break;
                 }
+                case arrow::Type::FLOAT: {
+                    auto float_array = std::static_pointer_cast<arrow::FloatArray>(array);
+                    if (float_array->IsNull(row_idx)) {
+                        std::cout << "NULL";
+                    } else {
+                        std::cout << float_array->Value(row_idx);
+                    }
+                    break;
+                }
                 default:
                     std::cout << "Unsupported type";
                     break;
@@ -65,7 +74,7 @@ int main(int argc, char* argv[]) {
 
     if (table) {
         std::cout << "Successfully processed data into Arrow Table." << std::endl;
-        PrintArrowTable(table);
+        // PrintArrowTable(table);
     } else {
         std::cerr << "Failed to process data." << std::endl;
     }
