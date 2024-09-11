@@ -2,6 +2,8 @@
 #include <string>
 #include "data_processor.hpp"
 
+#include <chrono>
+
 // Function to print the data in an Apache Arrow Table
 void PrintArrowTable(const std::shared_ptr<arrow::Table>& table) {
     if (!table) {
@@ -65,16 +67,27 @@ int main(int argc, char* argv[]) {
     //     return 1;
     // }
 
-    std::string filepath = "C:\\Users\\stavr\\OneDrive\\Desktop\\DuckArrowBridge\\test_output.parquet";
+    std::string filepath = "..\\data\\test_output_light.parquet";
+   
+    
 
     DataProcessor processor;
     processor.loadParquet(filepath);
 
+     // Start time point
+    auto start = std::chrono::high_resolution_clock::now();
     std::shared_ptr<arrow::Table> table = processor.process();
+    auto end = std::chrono::high_resolution_clock::now();
+
+    // Calculate the duration
+    std::chrono::duration<double> elapsed = end - start;
+
+    // Output the elapsed time in seconds
+    std::cout << "Time taken by function: " << elapsed.count() << " seconds." << std::endl;
 
     if (table) {
         std::cout << "Successfully processed data into Arrow Table." << std::endl;
-        // PrintArrowTable(table);
+        PrintArrowTable(table);
     } else {
         std::cerr << "Failed to process data." << std::endl;
     }
