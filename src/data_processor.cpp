@@ -1,5 +1,7 @@
 #include "data_processor.hpp"
 #include <duckdb.hpp>
+//#include <duckdb/common/arrow/arrow.hpp>
+//#include <duckdb/common/arrow/arrow_converter.hpp>
 #include <arrow/api.h>
 #include <arrow/io/api.h>
 #include <arrow/ipc/api.h>
@@ -34,14 +36,19 @@ void DataProcessor::loadParquet(const std::string& filepath) {
 }
 
 std::shared_ptr<arrow::Table> DataProcessor::process() {
-    //auto result = conn->Query("SELECT * FROM tmp");
-    auto result = conn->Query("SELECT * FROM '..\\data\\test_output_light.parquet'");
+    auto result = conn->Query("SELECT * FROM tmp");
+    // auto result = conn->Query("SELECT * FROM '..\\data\\test_output_light.parquet'");
+    
+    ArrowSchema arrow_schema;
+    ArrowArray arrow_array;
+    //ToArrowSchema(&arrow_schema);
+    //ToArrowArray(&arrow_array);
+
     //auto result = conn->Query("SELECT * FROM 'C:\\Users\\stavr\\OneDrive\\Desktop\\DuckArrowBridge\\test_output.parquet' WHERE id > 10000000 AND id < 20000000 ");
     //auto result2 =  conn->Prepare("SELECT * FROM 'C:\\Users\\stavr\\OneDrive\\Desktop\\DuckArrowBridge\\test_output.parquet' WHERE id > 10000000 AND id < 20000000 ");
 
-    //result2->
+    //result2->PendingQuery()->
     //result2->Execute()->Fetch()->
-    // Create an Arrow Schema and ArrayData object
 
 
     if (result->HasError()) {
@@ -62,6 +69,11 @@ std::shared_ptr<arrow::Table> DataProcessor::process() {
         if (!chunk || chunk->size() == 0) {
             break;
         }
+
+        /*duckdb::ArrowConverter();
+        duckdb::ArrowConverter();
+        duckdb::ClientProperties options();
+        duckdb::ArrowConverter::ToArrowArray(std::move(*chunk), &arrow_array, options);*/
         //std::cout << "Chunk size: " << chunk->size() << std::endl;
         //Sleep(500);
         for (duckdb::idx_t col_idx = 0; col_idx < chunk->ColumnCount(); ++col_idx) {
@@ -84,7 +96,7 @@ std::shared_ptr<arrow::Table> DataProcessor::process() {
                 std::shared_ptr<arrow::Array> array;
 
                 // Check if the builder contains data before finishing
-                int64_t length;
+                int32_t length;
                 length = builder.length();  // Check if there are values in the builder
 
                 if (length > 0) {

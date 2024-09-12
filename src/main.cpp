@@ -62,14 +62,22 @@ void PrintArrowTable(const std::shared_ptr<arrow::Table>& table) {
 }
 
 int main(int argc, char* argv[]) {
-    // if (argc < 2) {
-    //     std::cerr << "Usage: " << argv[0] << " <parquet_file>" << std::endl;
-    //     return 1;
-    // }
+     if (argc < 2) {
+         std::cerr << "Usage: " << argv[0] << " <parquet_file>" << std::endl;
+         return 1;
+     }
 
-    std::string filepath = "..\\data\\test_output_light.parquet";
+     // TODO: Add Check method for parquet file
+    std::string filepath = argv[1];
+    //std::string filepath = "..\\data\\test_output_light.parquet";
    
-    
+    bool printTable = false;
+    for (int i = 1; i < argc; ++i) {
+        std::string arg = argv[i];
+        if (arg == "--enable-print" /*|| arg == "-e"*/) {
+            printTable = true;  // Set the flag to true if found
+        }
+    }
 
     DataProcessor processor;
     processor.loadParquet(filepath);
@@ -87,7 +95,8 @@ int main(int argc, char* argv[]) {
 
     if (table) {
         std::cout << "Successfully processed data into Arrow Table." << std::endl;
-        PrintArrowTable(table);
+        if(printTable)
+            PrintArrowTable(table);
     } else {
         std::cerr << "Failed to process data." << std::endl;
     }
