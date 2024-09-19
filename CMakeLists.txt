@@ -8,7 +8,7 @@ set(CMAKE_CXX_STANDARD 17)
 
 # Use vcpkg for dependencies
 # if(CMAKE_BUILD_TYPE STREQUAL "Debug")
-#     set(DCMAKE_PREFIX_PATH "C:/vcpkg/installed/x64-windows/Debug")
+#     set(DCMAKE_PREFIX_PATH "C:/vcpkg/installed/x64-windows/")
 # else()
 #     set(DCMAKE_PREFIX_PATH "C:/vcpkg/installed/x64-windows")
 # endif()
@@ -16,6 +16,7 @@ set(CMAKE_CXX_STANDARD 17)
 
 # Include directories
 include_directories(include)
+
 
 # Link directories
 link_directories(lib)
@@ -26,10 +27,11 @@ file(GLOB SOURCES "src/*.cpp")
 # Add the executable
 add_executable(${PROJECT_NAME} ${SOURCES})
 
-# Find Arrow package
+## Find Arrow package
 find_package(Arrow CONFIG REQUIRED)
 
-# Link libraries
+
+## Link libraries
 target_link_libraries(${PROJECT_NAME} PRIVATE duckdb Arrow::arrow_shared)
 
 
