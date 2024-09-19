@@ -62,14 +62,14 @@ void PrintArrowTable(const std::shared_ptr<arrow::Table>& table) {
 }
 
 int main(int argc, char* argv[]) {
-     if (argc < 2) {
+     /*if (argc < 2) {
          std::cerr << "Usage: " << argv[0] << " <parquet_file>" << std::endl;
          return 1;
-     }
+     }*/
 
-     // TODO: Add Check method for parquet file
-    std::string filepath = argv[1];
-    //std::string filepath = "..\\data\\test_output_light.parquet";
+    // TODO: Add Check method for parquet file and input via json file 
+    // std::string filepath = argv[1];
+    std::string filepath = "..\\data\\test_output_light.parquet";
    
     bool printTable = false;
     for (int i = 1; i < argc; ++i) {
@@ -91,7 +91,7 @@ int main(int argc, char* argv[]) {
     std::chrono::duration<double> elapsed = end - start;
 
     // Output the elapsed time in seconds
-    std::cout << "Time taken by function: " << elapsed.count() << " seconds." << std::endl;
+    std::cout << "Time taken by process function: " << elapsed.count() << " seconds." << std::endl;
 
     if (table) {
         std::cout << "Successfully processed data into Arrow Table." << std::endl;

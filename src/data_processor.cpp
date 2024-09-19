@@ -2,11 +2,13 @@
 #include <duckdb.hpp>
 //#include <duckdb/common/arrow/arrow.hpp>
 //#include <duckdb/common/arrow/arrow_converter.hpp>
+//#include <duckdb.h>
 #include <arrow/api.h>
 #include <arrow/io/api.h>
 #include <arrow/ipc/api.h>
 #include <iostream>
 #include <windows.h>
+#include <arrow/c/bridge.h>
 
 
 DataProcessor::DataProcessor() {
@@ -41,6 +43,7 @@ std::shared_ptr<arrow::Table> DataProcessor::process() {
     
     ArrowSchema arrow_schema;
     ArrowArray arrow_array;
+
     //ToArrowSchema(&arrow_schema);
     //ToArrowArray(&arrow_array);
 
