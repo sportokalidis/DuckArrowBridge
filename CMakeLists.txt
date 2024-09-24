@@ -45,16 +45,16 @@ endif()
 
 # List all required DLLs (add other required DLLs to this list)
 set(REQUIRED_DLLS
-    "${DLL_DIR}/arrow.dll"
-    "${DLL_DIR}/brotlicommon.dll"
-    "${DLL_DIR}/brotlidec.dll"
-    "${DLL_DIR}/brotlienc.dll"
-    "${DLL_DIR}/bz2d.dll"
+#    "${DLL_DIR}/arrow.dll"
+#    "${DLL_DIR}/brotlicommon.dll"
+#    "${DLL_DIR}/brotlidec.dll"
+#    "${DLL_DIR}/brotlienc.dll"
+#    "${DLL_DIR}/bz2d.dll"
     "${DLL_DIR}/duckdb.dll"
-    "${DLL_DIR}/lz4d.dll"
-    "${DLL_DIR}/snappy.dll"
-    "${DLL_DIR}/zlibd1.dll"
-    "${DLL_DIR}/zstd.dll"
+#    "${DLL_DIR}/lz4d.dll"
+#    "${DLL_DIR}/snappy.dll"
+#    "${DLL_DIR}/zlibd1.dll"
+#    "${DLL_DIR}/zstd.dll"
     # Add more DLLs here if needed
 )
 
