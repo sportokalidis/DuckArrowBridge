@@ -2,6 +2,11 @@
 #include <string>
 #include "data_processor.hpp"
 #include <chrono>
+#include <arrow/api.h>
+#include <arrow/io/api.h>
+#include <arrow/ipc/api.h>
+#include <iostream>
+
 
 // Function to print the data in an Apache Arrow Table
 void PrintArrowTable(const std::shared_ptr<arrow::Table>& table) {
@@ -77,8 +82,14 @@ void PrintArrowTable(const std::shared_ptr<arrow::Table>& table) {
     }
 }
 
+void PrintFirstNRows(const std::shared_ptr<arrow::Table>& table, int num_rows);
+
+
+
 int main(int argc, char* argv[]) {
-    std::string filepath = "..\\data\\test_output_16000.parquet";
+     std::string filepath = "..\\data\\test_output_30000000.parquet";
+    //std::string filepath = "C:\\Users\\stavr\\OneDrive\\Desktop\\DuckArrowBridge\\cmake-build-debug\\output_parquet\\output_part_29.parquet";
+
     bool printTable = true;
 
     for (int i = 1; i < argc; ++i) {
@@ -109,3 +120,44 @@ int main(int argc, char* argv[]) {
 
     return 0;
 }
+
+// void PrintFirstNRows(const std::shared_ptr<arrow::Table>& table, int num_rows) {
+//     auto num_columns = table->num_columns();
+//     auto num_rows_table = table->num_rows();
+//     // Adjust num_rows if table has fewer rows than requested
+//     if (num_rows > num_rows_table) {
+//         num_rows = num_rows_table;
+//     }
+//
+//     // Print column names
+//     for (int i = 0; i < num_columns; ++i) {
+//         std::cout << table->schema()->field(i)->name() << "\t";
+//     }
+//     std::cout << std::endl;
+//
+//     // Print the data row by row
+//     for (int row = 0; row < num_rows; ++row) {
+//         for (int col = 0; col < num_columns; ++col) {
+//             auto column = table->column(col);
+//             auto chunked_array = column->chunk(0); // assuming only one chunk
+//             auto array = chunked_array->data();
+//             switch (array->type_id()) {
+//                 case arrow::Type::INT64: {
+//                     auto int_array = std::static_pointer_cast<arrow::Int64Array>(chunked_array);
+//                     std::cout << int_array->Value(row) << "\t";
+//                     break;
+//                 }
+//                 case arrow::Type::STRING: {
+//                     auto str_array = std::static_pointer_cast<arrow::StringArray>(chunked_array);
+//                     std::cout << str_array->GetString(row) << "\t";
+//                     break;
+//                 }
+//                 // Add other types as needed
+//                 default:
+//                     std::cout << "Unsupported type\t";
+//                 break;
+//             }
+//         }
+//         std::cout << std::endl;
+//     }
+// }

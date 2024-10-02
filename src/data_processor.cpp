@@ -4,6 +4,52 @@
 #include <arrow/api.h>
 #include <arrow/io/api.h>
 #include <arrow/ipc/api.h>
+#include <arrow/api.h>
+#include <arrow/io/api.h>
+#include <arrow/ipc/api.h>
+#include <arrow/filesystem/api.h>
+#include <arrow/io/file.h>
+#include <arrow/ipc/writer.h>
+#include <arrow/filesystem/localfs.h>
+#include "arrow/c/bridge.h"
+#include <parquet/arrow/writer.h>
+#include <parquet/exception.h>
+
+void DataProcessor::WriteParquetFile(const std::shared_ptr<arrow::Table>& table, const std::string& filepath) {
+    // Open file output stream
+    std::shared_ptr<arrow::io::FileOutputStream> outfile;
+    PARQUET_ASSIGN_OR_THROW(
+        outfile,
+        arrow::io::FileOutputStream::Open(filepath)
+    );
+
+    // Set the Parquet writer properties
+    std::shared_ptr<parquet::WriterProperties> writer_properties = parquet::WriterProperties::Builder().compression(arrow::Compression::SNAPPY)->build();
+    std::shared_ptr<parquet::ArrowWriterProperties> arrow_properties = parquet::ArrowWriterProperties::Builder().store_schema()->build();
+
+    // Create a Parquet file writer
+    std::unique_ptr<parquet::arrow::FileWriter> parquet_writer;
+    PARQUET_ASSIGN_OR_THROW(
+        parquet_writer,
+        parquet::arrow::FileWriter::Open(
+            *table->schema().get(),                           // schema of the table
+            arrow::default_memory_pool(),               // memory pool
+            outfile,                                    // output stream
+            writer_properties,                          // writer properties
+            arrow_properties                            // arrow writer properties
+        )
+    );
+
+    // Write the Arrow table to the Parquet file
+    PARQUET_THROW_NOT_OK(parquet_writer->WriteTable(*table, table->num_rows()));
+
+    // Finalize and close the writer
+    PARQUET_THROW_NOT_OK(parquet_writer->Close());
+    PARQUET_THROW_NOT_OK(outfile->Close());
+
+    std::cout << "Data saved to " << filepath << std::endl;
+}
+
 
 DataProcessor::DataProcessor() {
     // Initialize DuckDB
@@ -61,7 +107,9 @@ std::shared_ptr<arrow::Table> DataProcessor::process(const std::string& filepath
 
     // Vector to hold record batches
     std::vector<std::shared_ptr<arrow::RecordBatch>> batches;
-
+    int64_t total_rows = 0;    // To track accumulated rows
+    int batch_counter = 0;
+    int file_counter = 0;      // For naming the output Parquet files
     // Loop to fetch batches
     while (true) {
         auto arrow_array = static_cast<duckdb_arrow_array>(malloc(sizeof(struct ArrowArray)));
@@ -78,14 +126,33 @@ std::shared_ptr<arrow::Table> DataProcessor::process(const std::string& filepath
 
         std::shared_ptr<arrow::RecordBatch> record_batch = arrow::ImportRecordBatch(reinterpret_cast<struct ArrowArray*>(arrow_array), schema).ValueOrDie();
         batches.push_back(record_batch);
-
-        free(arrow_array);
-
+        total_rows += record_batch->num_rows();
         // Stop if batch size is less than expected (no more data)
         // TODO: Find other way
         if (record_batch->num_rows() < 2048) {
+            auto arrow_table = arrow::Table::FromRecordBatches(batches).ValueOrDie();
+            std::string output_file = "./output_parquet/output_part_" + std::to_string(file_counter++) + ".parquet";
+            WriteParquetFile(arrow_table, output_file);
+
+            // Reset batches and row count
+            batches.clear();
             break;
         }
+
+        if (total_rows >= 1000000) {
+            auto arrow_table = arrow::Table::FromRecordBatches(batches).ValueOrDie();
+            std::string output_file = "./output_parquet/output_part_" + std::to_string(file_counter++) + ".parquet";
+            WriteParquetFile(arrow_table, output_file);
+
+            // Reset batches and row count
+            batches.clear();
+            total_rows = 0;
+        }
+         // if (record_batch->num_rows() < 2048) {
+         //     break;
+         // }
+
+        free(arrow_array);
     }
 
     // Free Arrow schema memory
@@ -93,5 +160,6 @@ std::shared_ptr<arrow::Table> DataProcessor::process(const std::string& filepath
     duckdb_destroy_arrow(&result);
 
     // Combine all batches into a single table
+    // TODO: Check for memory copy or zero-cory
     return arrow::Table::FromRecordBatches(schema, batches).ValueOrDie();
 }
