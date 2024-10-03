@@ -88,7 +88,6 @@ void PrintFirstNRows(const std::shared_ptr<arrow::Table>& table, int num_rows);
 
 int main(int argc, char* argv[]) {
      std::string filepath = "..\\data\\test_output_30000000.parquet";
-    //std::string filepath = "C:\\Users\\stavr\\OneDrive\\Desktop\\DuckArrowBridge\\cmake-build-debug\\output_parquet\\output_part_29.parquet";
 
     bool printTable = true;
 
