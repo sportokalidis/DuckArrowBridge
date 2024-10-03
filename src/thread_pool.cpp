@@ -20,7 +20,6 @@ ThreadPool::ThreadPool(size_t max_threads) : stop(false) {
     }
 }
 
-// Destructor
 ThreadPool::~ThreadPool() {
     {
         std::unique_lock<std::mutex> lock(queue_mutex);

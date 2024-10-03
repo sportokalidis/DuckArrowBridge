@@ -124,8 +124,8 @@ std::shared_ptr<arrow::Table> DataProcessor::process(const std::string& filepath
             std::vector<std::shared_ptr<arrow::RecordBatch>> batches_to_write = std::move(batches);
             int current_file_counter = file_counter++;
 
-            // Enqueue the task in the thread pool using enqueue_void for void return type
-            pool.enqueue_void([batches_to_write, schema, current_file_counter, this] {
+            // Enqueue a task in the thread pool to write the parquet file
+            pool.enqueue([batches_to_write, schema, current_file_counter, this] {
                 auto arrow_table = arrow::Table::FromRecordBatches(schema, batches_to_write).ValueOrDie();
                 std::string output_file = "./output_parquet/output_part_" + std::to_string(current_file_counter) + ".parquet";
                 WriteParquetFile(arrow_table, output_file);
@@ -148,5 +148,6 @@ std::shared_ptr<arrow::Table> DataProcessor::process(const std::string& filepath
 
     return arrow::Table::FromRecordBatches(schema, batches).ValueOrDie();
 }
+
 
 

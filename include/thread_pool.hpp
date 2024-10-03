@@ -14,13 +14,8 @@ public:
     ThreadPool(size_t max_threads);
     ~ThreadPool();
 
-    // Overload for non-void return types
     template <typename F>
-    auto enqueue(F&& f) -> std::future<typename std::invoke_result<F>::type>;
-
-    // Overload for void return types
-    template <typename F>
-    void enqueue_void(F&& f);
+    auto enqueue(F&& f) -> std::future<typename std::result_of<F()>::type>;
 
 private:
     std::vector<std::thread> workers;
@@ -32,28 +27,16 @@ private:
 
 // Template function definitions must stay in the header
 template <typename F>
-auto ThreadPool::enqueue(F&& f) -> std::future<typename std::invoke_result<F>::type> {
-    using return_type = typename std::invoke_result<F>::type;
-
+auto ThreadPool::enqueue(F&& f) -> std::future<typename std::result_of<F()>::type> {
+    using return_type = typename std::result_of<F()>::type;
     auto task = std::make_shared<std::packaged_task<return_type()>>(std::forward<F>(f));
     std::future<return_type> res = task->get_future();
-
     {
         std::unique_lock<std::mutex> lock(queue_mutex);
         tasks.emplace([task]() { (*task)(); });
     }
-
     condition.notify_one();
     return res;
-}
-
-template <typename F>
-void ThreadPool::enqueue_void(F&& f) {
-    {
-        std::unique_lock<std::mutex> lock(queue_mutex);
-        tasks.emplace(std::forward<F>(f));
-    }
-    condition.notify_one();
 }
 
 #endif // THREAD_POOL_HPP
