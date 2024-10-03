@@ -1,158 +1,153 @@
 #include "data_processor.hpp"
-#include <duckdb.hpp>
-//#include <duckdb/common/arrow/arrow.hpp>
-//#include <duckdb/common/arrow/arrow_converter.hpp>
-//#include <duckdb.h>
+#include "thread_pool.hpp"
+#include <iostream>
+#include <arrow/c/bridge.h>  // For converting DuckDB Arrow to Arrow C++
 #include <arrow/api.h>
 #include <arrow/io/api.h>
 #include <arrow/ipc/api.h>
-#include <iostream>
-#include <windows.h>
-#include <arrow/c/bridge.h>
+#include <arrow/filesystem/api.h>
+#include <arrow/io/file.h>
+#include <arrow/ipc/writer.h>
+#include <arrow/filesystem/localfs.h>
+#include <parquet/arrow/writer.h>
+#include <parquet/exception.h>
+
+void DataProcessor::WriteParquetFile(const std::shared_ptr<arrow::Table>& table, const std::string& filepath) {
+    // Open file output stream
+    std::shared_ptr<arrow::io::FileOutputStream> outfile;
+    PARQUET_ASSIGN_OR_THROW(
+        outfile,
+        arrow::io::FileOutputStream::Open(filepath)
+    );
+
+    // Set the Parquet writer properties
+    std::shared_ptr<parquet::WriterProperties> writer_properties = parquet::WriterProperties::Builder().compression(arrow::Compression::SNAPPY)->build();
+    std::shared_ptr<parquet::ArrowWriterProperties> arrow_properties = parquet::ArrowWriterProperties::Builder().store_schema()->build();
+
+    // Create a Parquet file writer
+    std::unique_ptr<parquet::arrow::FileWriter> parquet_writer;
+    PARQUET_ASSIGN_OR_THROW(
+        parquet_writer,
+        parquet::arrow::FileWriter::Open(
+            *table->schema().get(),                           // schema of the table
+            arrow::default_memory_pool(),               // memory pool
+            outfile,                                    // output stream
+            writer_properties,                          // writer properties
+            arrow_properties                            // arrow writer properties
+        )
+    );
+
+    // Write the Arrow table to the Parquet file
+    PARQUET_THROW_NOT_OK(parquet_writer->WriteTable(*table, table->num_rows()));
+
+    // Finalize and close the writer
+    PARQUET_THROW_NOT_OK(parquet_writer->Close());
+    PARQUET_THROW_NOT_OK(outfile->Close());
+
+    std::cout << "Data saved to " << filepath << std::endl;
+}
 
 
 DataProcessor::DataProcessor() {
-    db = std::make_unique<duckdb::DuckDB>(nullptr);
-    conn = std::make_unique<duckdb::Connection>(*db);
+    // Initialize DuckDB
+    if (duckdb_open(NULL, &db) != DuckDBSuccess) {
+        throw std::runtime_error("Failed to open DuckDB in-memory database");
+    }
+
+    if (duckdb_connect(db, &conn) != DuckDBSuccess) {
+        throw std::runtime_error("Failed to connect to DuckDB");
+    }
 }
 
 void DataProcessor::loadParquet(const std::string& filepath) {
-    try {
-        std::string query = "CREATE TABLE tmp AS SELECT * FROM parquet_scan('" + filepath + "')"; // avoid it
-        auto result = conn->Query(query);
-        if (result->HasError()) {
-            throw std::runtime_error(result->GetError());
-        }
-        /*result = conn->Query("SELECT * FROM tmp");
-        while (true) {
-            Sleep(500);
-            auto chunk = result->Fetch();
-            if (!chunk || chunk->size() == 0) {
-                break;
-            }
-            std::cout << "Chunk size: " << chunk->size() << std::endl;
-        }*/
-    } catch (const std::exception &e) {
-        std::cerr << "Error loading Parquet file: " << e.what() << std::endl;
+    // Construct the SQL query to load the Parquet file
+    std::string query = "SELECT * FROM parquet_scan('" + filepath + "')";
+    duckdb_arrow result;
+
+    if (duckdb_query_arrow(conn, query.c_str(), &result) != DuckDBSuccess) {
+        throw std::runtime_error("Error loading Parquet file");
     }
+
+    // Save the result in the DataProcessor object
+    // You can store the result if needed for later access
 }
 
-std::shared_ptr<arrow::Table> DataProcessor::process() {
-    auto result = conn->Query("SELECT * FROM tmp");
-    // auto result = conn->Query("SELECT * FROM '..\\data\\test_output_light.parquet'");
-    
-    ArrowSchema arrow_schema;
-    ArrowArray arrow_array;
+// DataProcessor::process with multithreading
+std::shared_ptr<arrow::Table> DataProcessor::process(const std::string& filepath) {
+    ThreadPool pool(4);  // Maximum 4 threads for writing to parquet files
+    std::string query = "SELECT * FROM parquet_scan('" + filepath + "')";
+    duckdb_arrow result;
 
-    //ToArrowSchema(&arrow_schema);
-    //ToArrowArray(&arrow_array);
-
-    //auto result = conn->Query("SELECT * FROM 'C:\\Users\\stavr\\OneDrive\\Desktop\\DuckArrowBridge\\test_output.parquet' WHERE id > 10000000 AND id < 20000000 ");
-    //auto result2 =  conn->Prepare("SELECT * FROM 'C:\\Users\\stavr\\OneDrive\\Desktop\\DuckArrowBridge\\test_output.parquet' WHERE id > 10000000 AND id < 20000000 ");
-
-    //result2->PendingQuery()->
-    //result2->Execute()->Fetch()->
-
-
-    if (result->HasError()) {
-        std::cerr << "Query failed: " << result->GetError() << std::endl;
+    if (duckdb_query_arrow(conn, query.c_str(), &result) != DuckDBSuccess) {
+        std::cerr << "Error executing query and retrieving Arrow result" << std::endl;
         return nullptr;
     }
 
-    std::vector<std::shared_ptr<arrow::Array>> arrays;
-    std::vector<std::shared_ptr<arrow::Field>> fields;
+    auto arrow_schema = static_cast<duckdb_arrow_schema>(malloc(sizeof(struct ArrowSchema)));
+    if (!arrow_schema) {
+        std::cerr << "Failed to allocate memory for Arrow schema" << std::endl;
+        free(arrow_schema);
+        duckdb_destroy_arrow(&result);
+        return nullptr;
+    }
 
-    // Use DuckToArrow
-    // PyBinding to pythnon package
-    // Test to win10
-    // See the chunk size 
+    if (duckdb_query_arrow_schema(result, &arrow_schema) != DuckDBSuccess) {
+        std::cerr << "Error retrieving Arrow schema" << std::endl;
+        free(arrow_schema);
+        duckdb_destroy_arrow(&result);
+        return nullptr;
+    }
+
+    std::shared_ptr<arrow::Schema> schema = arrow::ImportSchema(reinterpret_cast<struct ArrowSchema*>(arrow_schema)).ValueOrDie();
+    std::vector<std::shared_ptr<arrow::RecordBatch>> batches;
+    int64_t total_rows = 0;
+    int file_counter = 0;
+
     while (true) {
-        auto chunk = result->Fetch(); // 
-        
-        if (!chunk || chunk->size() == 0) {
+        auto arrow_array = static_cast<duckdb_arrow_array>(malloc(sizeof(struct ArrowArray)));
+        if (!arrow_array) {
+            std::cerr << "Failed to allocate memory for Arrow array" << std::endl;
             break;
         }
 
-        /*duckdb::ArrowConverter();
-        duckdb::ArrowConverter();
-        duckdb::ClientProperties options();
-        duckdb::ArrowConverter::ToArrowArray(std::move(*chunk), &arrow_array, options);*/
-        //std::cout << "Chunk size: " << chunk->size() << std::endl;
-        //Sleep(500);
-        for (duckdb::idx_t col_idx = 0; col_idx < chunk->ColumnCount(); ++col_idx) {
-            auto& vector = chunk->data[col_idx];
-            auto logical_type = vector.GetType().id();
-            auto column_name = result->names[col_idx];
-
-           // std::cout << "Col Name: " << column_name << std::endl;
-            if (logical_type == duckdb::LogicalTypeId::INTEGER) {
-                arrow::Int32Builder builder;
-                for (duckdb::idx_t row_idx = 0; row_idx < chunk->size(); ++row_idx) {
-                    auto value = vector.GetValue(row_idx);
-                    if (value.IsNull()) {
-                        builder.AppendNull();
-                    } else {
-                        builder.Append(value.GetValue<int32_t>());
-                    }
-                }
-
-                std::shared_ptr<arrow::Array> array;
-
-                // Check if the builder contains data before finishing
-                int32_t length;
-                length = builder.length();  // Check if there are values in the builder
-
-                if (length > 0) {
-                    std::cout << "Number of elements in builder: " << length << std::endl;
-                }
-                else {
-                    std::cerr << "Builder is empty before Finish()" << std::endl;
-                }
-
-                builder.Finish(&array);
-                arrays.push_back(array);
-                fields.push_back(arrow::field(column_name, arrow::int32()));
-            } 
-            else if (logical_type == duckdb::LogicalTypeId::VARCHAR) {
-                arrow::StringBuilder builder;
-                for (duckdb::idx_t row_idx = 0; row_idx < chunk->size(); ++row_idx) {
-                    auto value = vector.GetValue(row_idx);
-                    if (value.IsNull()) {
-                        builder.AppendNull();
-                    } else {
-                        builder.Append(value.GetValue<std::string>());
-                    }
-                }
-
-                std::shared_ptr<arrow::Array> array;
-                builder.Finish(&array);
-                arrays.push_back(array);
-                fields.push_back(arrow::field(column_name, arrow::utf8()));
-            } 
-            else if (logical_type == duckdb::LogicalTypeId::FLOAT) {
-                arrow::FloatBuilder builder;
-                for (duckdb::idx_t row_idx = 0; row_idx < chunk->size(); ++row_idx) {
-                    auto value = vector.GetValue(row_idx);
-                    if (value.IsNull()) {
-                        builder.AppendNull();
-                    } else {
-                        builder.Append(value.GetValue<float>());
-                    }
-                }
-
-                std::shared_ptr<arrow::Array> array;
-                builder.Finish(&array);
-                arrays.push_back(array);
-                fields.push_back(arrow::field(column_name, arrow::float32()));
-            } 
-            else {
-                std::cerr << "Unsupported data type in column: " << column_name << std::endl;
-                return nullptr;
-            }
+        if (duckdb_query_arrow_array(result, &arrow_array) != DuckDBSuccess) {
+            free(arrow_array);
+            break;
         }
+
+        std::shared_ptr<arrow::RecordBatch> record_batch = arrow::ImportRecordBatch(reinterpret_cast<struct ArrowArray*>(arrow_array), schema).ValueOrDie();
+        batches.push_back(record_batch);
+        total_rows += record_batch->num_rows();
+
+        if (total_rows >= 1000000) {
+            // Capture the current batches and file counter to pass to the thread
+            std::vector<std::shared_ptr<arrow::RecordBatch>> batches_to_write = std::move(batches);
+            int current_file_counter = file_counter++;
+
+            // Enqueue a task in the thread pool to write the parquet file
+            pool.enqueue([batches_to_write, schema, current_file_counter, this] {
+                auto arrow_table = arrow::Table::FromRecordBatches(schema, batches_to_write).ValueOrDie();
+                std::string output_file = "./output_parquet/output_part_" + std::to_string(current_file_counter) + ".parquet";
+                WriteParquetFile(arrow_table, output_file);
+            });
+
+            // Reset the batches and total rows
+            batches.clear();
+            total_rows = 0;
+        }
+
+        if (record_batch->num_rows() < 2048) {
+            break;
+        }
+
+        free(arrow_array);
     }
 
-    auto schema = std::make_shared<arrow::Schema>(fields);
+    free(arrow_schema);
+    duckdb_destroy_arrow(&result);
 
-    return arrow::Table::Make(schema, arrays);
+    return arrow::Table::FromRecordBatches(schema, batches).ValueOrDie();
 }
+
+
+

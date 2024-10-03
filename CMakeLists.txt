@@ -13,7 +13,8 @@ set(CMAKE_CXX_STANDARD 17)
 #     set(DCMAKE_PREFIX_PATH "C:/vcpkg/installed/x64-windows")
 # endif()
 
-
+#set(ARROW_DIR "/path/to/vcpkg/installed/x64-windows/share/arrow")
+#set(PARQUET_DIR "/path/to/vcpkg/installed/x64-windows/share/parquet")
 # Include directories
 include_directories(include)
 
@@ -29,10 +30,10 @@ add_executable(${PROJECT_NAME} ${SOURCES})
 
 ## Find Arrow package
 find_package(Arrow CONFIG REQUIRED)
-
+find_package(Parquet CONFIG REQUIRED)
 
 ## Link libraries
-target_link_libraries(${PROJECT_NAME} PRIVATE duckdb Arrow::arrow_shared)
+target_link_libraries(${PROJECT_NAME} PRIVATE duckdb Arrow::arrow_shared Parquet::parquet_shared)
 
 
 
@@ -45,16 +46,16 @@ endif()
 
 # List all required DLLs (add other required DLLs to this list)
 set(REQUIRED_DLLS
-    "${DLL_DIR}/arrow.dll"
-    "${DLL_DIR}/brotlicommon.dll"
-    "${DLL_DIR}/brotlidec.dll"
-    "${DLL_DIR}/brotlienc.dll"
-    "${DLL_DIR}/bz2d.dll"
+#    "${DLL_DIR}/arrow.dll"
+#    "${DLL_DIR}/brotlicommon.dll"
+#    "${DLL_DIR}/brotlidec.dll"
+#    "${DLL_DIR}/brotlienc.dll"
+#    "${DLL_DIR}/bz2d.dll"
     "${DLL_DIR}/duckdb.dll"
-    "${DLL_DIR}/lz4d.dll"
-    "${DLL_DIR}/snappy.dll"
-    "${DLL_DIR}/zlibd1.dll"
-    "${DLL_DIR}/zstd.dll"
+#    "${DLL_DIR}/lz4d.dll"
+#    "${DLL_DIR}/snappy.dll"
+#    "${DLL_DIR}/zlibd1.dll"
+#    "${DLL_DIR}/zstd.dll"
     # Add more DLLs here if needed
 )
 
