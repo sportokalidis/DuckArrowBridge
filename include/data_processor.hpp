@@ -6,7 +6,17 @@
 #include "duckdb.h"  // Include DuckDB C API header
 #include <arrow/api.h>
 
-class DataProcessor {
+#ifdef _WIN32
+    #ifdef BUILD_DLL
+        #define DLL_EXPORT __declspec(dllexport)
+    #else
+        #define DLL_EXPORT __declspec(dllimport)
+    #endif
+#else
+    #define DLL_EXPORT
+#endif
+
+class DLL_EXPORT DataProcessor {
 public:
     DataProcessor();
     void loadParquet(const std::string& filepath);

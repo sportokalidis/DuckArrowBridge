@@ -3,39 +3,35 @@ project(DuckArrowBridge)
 
 set(CMAKE_CXX_STANDARD 17)
 
-# Set runtime library to Multi-threaded Debug
-# set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} /MTd")
-
-# Use vcpkg for dependencies
-# if(CMAKE_BUILD_TYPE STREQUAL "Debug")
-#     set(DCMAKE_PREFIX_PATH "C:/vcpkg/installed/x64-windows/")
-# else()
-#     set(DCMAKE_PREFIX_PATH "C:/vcpkg/installed/x64-windows")
-# endif()
-
-#set(ARROW_DIR "/path/to/vcpkg/installed/x64-windows/share/arrow")
-#set(PARQUET_DIR "/path/to/vcpkg/installed/x64-windows/share/parquet")
 # Include directories
 include_directories(include)
-
 
 # Link directories
 link_directories(lib)
 
 # Add source files, excluding main.cpp
-file(GLOB SOURCES "src/*.cpp")
+file(GLOB LIB_SOURCES "src/*.cpp")
+list(REMOVE_ITEM LIB_SOURCES "src/main.cpp")
 
-# Add the executable
-add_executable(${PROJECT_NAME} ${SOURCES})
+# Create the shared library (DLL)
+add_library(DuckArrowBridgeLib SHARED ${LIB_SOURCES})
 
 ## Find Arrow package
 find_package(Arrow CONFIG REQUIRED)
 find_package(Parquet CONFIG REQUIRED)
 
+# -DVCPKG_TARGET_TRIPLET:STRING=x64-mingw-dynamic
+set(VCPKG_TARGET_TRIPLET "x64-mingw-dynamic")
 ## Link libraries
-target_link_libraries(${PROJECT_NAME} PRIVATE duckdb Arrow::arrow_shared Parquet::parquet_shared)
+target_link_libraries(${PROJECT_NAME}Lib PRIVATE duckdb Arrow::arrow_shared Parquet::parquet_shared)
 
+# Define the DLL export macro for the shared library
+target_compile_definitions(DuckArrowBridgeLib PRIVATE BUILD_DLL)
 
+# Create the executable and link it to the shared library
+add_executable(${PROJECT_NAME} src/main.cpp)
+# Link the shared library to the executable
+target_link_libraries(${PROJECT_NAME} PRIVATE ${PROJECT_NAME}Lib duckdb Arrow::arrow_shared Parquet::parquet_shared)
 
 # Define the DLL directory based on the build configuration
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
@@ -77,4 +73,17 @@ else()
         COMMAND ${CMAKE_COMMAND} -E copy
         ${PROJECT_SOURCE_DIR}/dll/duckdb.dll
         $<TARGET_FILE_DIR:${PROJECT_NAME}>)
+endif()
+
+
+# Copy the output DLL and import library to a directory for easier use
+if(WIN32)
+    set(OUTPUT_DIR "${CMAKE_BINARY_DIR}/output")
+    file(MAKE_DIRECTORY ${OUTPUT_DIR})
+    add_custom_command(TARGET DuckArrowBridgeLib POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy
+            $<TARGET_FILE:DuckArrowBridgeLib> ${OUTPUT_DIR}
+            COMMAND ${CMAKE_COMMAND} -E copy
+            $<TARGET_LINKER_FILE:DuckArrowBridgeLib> ${OUTPUT_DIR}
+    )
 endif()

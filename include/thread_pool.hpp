@@ -35,7 +35,7 @@ auto ThreadPool::enqueue(F&& f) -> std::future<typename std::result_of<F()>::typ
         std::unique_lock<std::mutex> lock(queue_mutex);
         tasks.emplace([task]() { (*task)(); });
     }
-    condition.notify_one();
+    condition.notify_one(); // wakes up one of the waiting threads (if any)
     return res;
 }
 

@@ -11,8 +11,11 @@
 #include <arrow/filesystem/localfs.h>
 #include <parquet/arrow/writer.h>
 #include <parquet/exception.h>
+#include <arrow/c/helpers.h>
+#include <chrono>
 
 void DataProcessor::WriteParquetFile(const std::shared_ptr<arrow::Table>& table, const std::string& filepath) {
+    auto start = std::chrono::high_resolution_clock::now();
     // Open file output stream
     std::shared_ptr<arrow::io::FileOutputStream> outfile;
     PARQUET_ASSIGN_OR_THROW(
@@ -44,7 +47,11 @@ void DataProcessor::WriteParquetFile(const std::shared_ptr<arrow::Table>& table,
     PARQUET_THROW_NOT_OK(parquet_writer->Close());
     PARQUET_THROW_NOT_OK(outfile->Close());
 
-    std::cout << "Data saved to " << filepath << std::endl;
+    auto end = std::chrono::high_resolution_clock::now();
+
+    std::chrono::duration<double> elapsed = end - start;
+
+    std::cout << "Data saved to " << filepath << "  , Time: " << elapsed.count() << " seconds " << std::endl;
 }
 
 
@@ -74,7 +81,7 @@ void DataProcessor::loadParquet(const std::string& filepath) {
 
 // DataProcessor::process with multithreading
 std::shared_ptr<arrow::Table> DataProcessor::process(const std::string& filepath) {
-    ThreadPool pool(4);  // Maximum 4 threads for writing to parquet files
+    ThreadPool pool(8);  // Maximum 4 threads for writing to parquet files
     std::string query = "SELECT * FROM parquet_scan('" + filepath + "')";
     duckdb_arrow result;
 
@@ -115,9 +122,34 @@ std::shared_ptr<arrow::Table> DataProcessor::process(const std::string& filepath
             break;
         }
 
-        std::shared_ptr<arrow::RecordBatch> record_batch = arrow::ImportRecordBatch(reinterpret_cast<struct ArrowArray*>(arrow_array), schema).ValueOrDie();
-        batches.push_back(record_batch);
-        total_rows += record_batch->num_rows();
+        // TODO: Work but try for somthink better
+        if(ArrowArrayIsReleased(reinterpret_cast<struct ArrowArray*>(arrow_array))) {
+        // if (reinterpret_cast<ArrowArray*>(arrow_array)->length <= 0) {
+            std::cout << "Reached the end of data (empty Arrow array). Exiting loop." << std::endl;
+            std::vector<std::shared_ptr<arrow::RecordBatch>> batches_to_write = std::move(batches);
+            int current_file_counter = file_counter++;
+
+            // Enqueue a task in the thread pool to write the parquet file
+            //TODO: try to export to duckdb
+            pool.enqueue([batches_to_write, schema, current_file_counter, this] {
+                auto arrow_table = arrow::Table::FromRecordBatches(schema, batches_to_write).ValueOrDie();
+                std::string output_file = "./output_parquet/output_part_" + std::to_string(current_file_counter) + ".parquet";
+                WriteParquetFile(arrow_table, output_file);
+            });
+
+            // Reset the batches and total rows
+            batches.clear();
+            total_rows = 0;
+            reinterpret_cast<struct ArrowArray*>(arrow_array)->release;
+            free(arrow_array);  // Clean up the memory
+            break;
+        }
+
+        if(!ArrowArrayIsReleased(reinterpret_cast<struct ArrowArray*>(arrow_array))) {
+            std::shared_ptr<arrow::RecordBatch> record_batch = arrow::ImportRecordBatch(reinterpret_cast<struct ArrowArray*>(arrow_array), schema).ValueOrDie();
+            batches.push_back(record_batch);
+            total_rows += record_batch->num_rows();
+        }
 
         if (total_rows >= 1000000) {
             // Capture the current batches and file counter to pass to the thread
@@ -125,6 +157,7 @@ std::shared_ptr<arrow::Table> DataProcessor::process(const std::string& filepath
             int current_file_counter = file_counter++;
 
             // Enqueue a task in the thread pool to write the parquet file
+            //TODO: try to export to duckdb
             pool.enqueue([batches_to_write, schema, current_file_counter, this] {
                 auto arrow_table = arrow::Table::FromRecordBatches(schema, batches_to_write).ValueOrDie();
                 std::string output_file = "./output_parquet/output_part_" + std::to_string(current_file_counter) + ".parquet";
@@ -136,10 +169,11 @@ std::shared_ptr<arrow::Table> DataProcessor::process(const std::string& filepath
             total_rows = 0;
         }
 
-        if (record_batch->num_rows() < 2048) {
-            break;
-        }
-
+        // TODO: Urgent find another way!!!
+        // if (record_batch->num_rows() < 2048) {
+        //     break;
+        // }
+        reinterpret_cast<struct ArrowArray*>(arrow_array)->release;
         free(arrow_array);
     }
 
